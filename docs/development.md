@@ -16,7 +16,7 @@ cp .env.example .env
 make up       # Start PostgreSQL
 make install  # Install Python dependencies
 make migrate  # Run migrations (creates tables + seeds roles/permissions)
-make run      # Start the bot (bootstraps Founder + Owners)
+make run      # Start the bot
 ```
 
 ## Common Commands
@@ -37,8 +37,24 @@ make shell         # Python REPL with config loaded
 
 1. ✅ Phase 1 — Repository structure + config + Docker
 2. ✅ Phase 2 — Database (engine, tables, repositories, seed, founder bootstrap)
-3. ⬜ Phase 3 — Auth service + auth middleware (RBAC enforcement)
-4. ⬜ Phase 4 — HQ Bot foundation (/start, keyboards, callbacks)
-5. ⬜ Phase 5 — IDOL TEAM integration (notifications, topic routing)
-6. ⬜ Phase 6 — Audit + logging
-7. ⬜ Phase 7 — Testing (full test suite)
+3. ✅ Phase 3 — Auth service (permission, hierarchy, founder protection)
+4. ✅ Phase 4 — Auth middleware + user resolver
+5. ✅ Phase 5 — HQ Bot (/start, /help, /myid, /myroles, keyboards, callbacks)
+6. ✅ Phase 6 — Error middleware + audit service
+7. ✅ Phase 7 — Tests (domain models, auth service, config)
+
+## V1 Foundation Complete
+
+The platform is ready for:
+- Bot startup with full RBAC
+- Founder bootstrap from env
+- Permission-based menu visibility
+- Role management (Founder/Owner only)
+- Centralized error handling
+- Audit logging
+
+Next steps (beyond V1 Foundation):
+- Business domain (orders, products, payments)
+- AI integration
+- IDOL TEAM group features
+- Customer-facing flows

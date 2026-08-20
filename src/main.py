@@ -1,9 +1,15 @@
-"""IDOL Platform — Entry Point."""
+"""IDOL Platform — Entry Point.
+
+Full application bootstrap: logging, database, founder bootstrap, bot startup.
+"""
 
 import asyncio
 import sys
 
 import structlog
+from aiogram import Bot, Dispatcher
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 
 from src.config import settings
 from src.infrastructure.logging import setup_logging
@@ -33,16 +39,44 @@ async def main() -> None:
 
     await bootstrap_founder()
     await bootstrap_owners()
+    log.info("identity_bootstrap_complete")
 
-    log.info("idol_platform_ready", founder_id=settings.founder_telegram_id)
+    # --- Bot setup ---
+    bot = Bot(
+        token=settings.hq_bot_token.get_secret_value(),
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
+    dp = Dispatcher()
 
-    # Phase 5+: bot startup will go here
-    log.info("no_bot_yet", hint="Phase 5+ will add bot startup")
+    # Register middlewares
+    from src.presentation.middlewares.auth import AuthMiddleware
+    from src.presentation.middlewares.error import ErrorMiddleware
 
-    # --- Shutdown ---
-    from src.infrastructure.database.engine import dispose_engine
+    dp.message.middleware(ErrorMiddleware())
+    dp.message.middleware(AuthMiddleware())
+    dp.callback_query.middleware(ErrorMiddleware())
+    dp.callback_query.middleware(AuthMiddleware())
 
-    await dispose_engine()
+    # Register routers
+    from src.presentation.handlers.start import router as start_router
+
+    dp.include_router(start_router)
+
+    # --- Start polling ---
+    log.info(
+        "bot_starting",
+        username=settings.hq_bot_username,
+        founder_id=settings.founder_telegram_id,
+    )
+
+    try:
+        await dp.start_polling(bot)
+    finally:
+        log.info("shutting_down")
+        from src.infrastructure.database.engine import dispose_engine
+
+        await dispose_engine()
+        await bot.session.close()
 
 
 if __name__ == "__main__":
