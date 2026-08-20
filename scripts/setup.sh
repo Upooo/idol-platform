@@ -110,8 +110,7 @@ cd "$APP_DIR"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 sudo -u "$APP_USER" $PYTHON_CMD -m venv "$APP_DIR/.venv"
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip -q
-sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt" -q 2>/dev/null || \
-    sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -e ".$APP_DIR" -q
+sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -e "$APP_DIR" -q
 echo "  Dependencies installed."
 
 # --- 6. Setup .env + Start PostgreSQL ---
