@@ -1,12 +1,14 @@
 services:
   db:
     image: postgres:16-alpine
+    container_name: idol-postgres
+    restart: always
     environment:
       POSTGRES_USER: idol
       POSTGRES_PASSWORD: idol_secret
       POSTGRES_DB: idol_db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -14,16 +16,6 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
-
-  app:
-    build: .
-    env_file: .env
-    depends_on:
-      db:
-        condition: service_healthy
-    volumes:
-      - .:/app
-    command: python -m src.main
 
 volumes:
   pgdata:

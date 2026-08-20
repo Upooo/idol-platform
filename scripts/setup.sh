@@ -2,14 +2,15 @@
 # =============================================================
 # IDOL Platform — First-time VPS Setup
 # =============================================================
-# Usage: curl the repo, then run this script.
-#   sudo bash scripts/setup.sh
+# Usage:
+#   ssh root@VPS_IP
+#   git clone https://github.com/Upooo/idol-platform.git /opt/idol-platform
+#   sudo bash /opt/idol-platform/scripts/setup.sh
 # =============================================================
 set -euo pipefail
 
 APP_DIR="/opt/idol-platform"
 APP_USER="idol"
-REPO_URL="https://github.com/Upooo/idol-platform.git"
 
 echo "========================================"
 echo "  IDOL Platform — VPS Setup"
@@ -18,32 +19,39 @@ echo "========================================"
 # --- 1. System dependencies ---
 echo "[1/7] Installing system dependencies..."
 apt-get update -qq
-apt-get install -y -qq python3.11 python3.11-venv python3-pip \
-    postgresql postgresql-contrib git curl
+apt-get install -y -qq python3.11 python3.11-venv python3-pip git curl
 
-# --- 2. Create app user ---
-echo "[2/7] Creating app user..."
+# --- 2. Install Docker (for PostgreSQL) ---
+echo "[2/7] Installing Docker..."
+if ! command -v docker &>/dev/null; then
+    curl -fsSL https://get.docker.com | sh
+    systemctl enable docker
+    systemctl start docker
+    echo "  Docker installed."
+else
+    echo "  Docker already installed, skipping."
+fi
+
+# Install docker compose plugin if missing
+if ! docker compose version &>/dev/null; then
+    apt-get install -y -qq docker-compose-plugin
+fi
+
+# --- 3. Create app user ---
+echo "[3/7] Creating app user..."
 if ! id "$APP_USER" &>/dev/null; then
     useradd --system --shell /bin/bash --home-dir "$APP_DIR" "$APP_USER"
-    echo "  Created user: $APP_USER"
+    usermod -aG docker "$APP_USER"
+    echo "  Created user: $APP_USER (added to docker group)"
 else
-    echo "  User $APP_USER already exists, skipping."
+    usermod -aG docker "$APP_USER" 2>/dev/null || true
+    echo "  User $APP_USER already exists, ensured docker group."
 fi
-
-# --- 3. Clone repo ---
-echo "[3/7] Cloning repository..."
-if [ -d "$APP_DIR/.git" ]; then
-    echo "  Repo already exists, pulling latest..."
-    cd "$APP_DIR"
-    git pull origin main
-else
-    git clone "$REPO_URL" "$APP_DIR"
-    cd "$APP_DIR"
-fi
-chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 
 # --- 4. Python venv + dependencies ---
 echo "[4/7] Setting up Python environment..."
+cd "$APP_DIR"
+chown -R "$APP_USER:$APP_USER" "$APP_DIR"
 sudo -u "$APP_USER" python3.11 -m venv "$APP_DIR/.venv"
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip -q
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r "$APP_DIR/requirements.txt" -q
@@ -56,20 +64,30 @@ if [ ! -f "$APP_DIR/.env" ]; then
     chown "$APP_USER:$APP_USER" "$APP_DIR/.env"
     chmod 600 "$APP_DIR/.env"
     echo ""
-    echo "  ⚠️  IMPORTANT: Edit /opt/idol-platform/.env before starting!"
-    echo "  Required: HQ_BOT_TOKEN, FOUNDER_TELEGRAM_ID, DATABASE_URL"
+    echo "  ⚠️  EDIT /opt/idol-platform/.env BEFORE starting!"
+    echo "  Required: HQ_BOT_TOKEN, FOUNDER_TELEGRAM_ID"
     echo ""
 else
     echo "  .env already exists, skipping."
 fi
 
-# --- 6. PostgreSQL database ---
-echo "[6/7] Setting up PostgreSQL..."
-sudo -u postgres psql -tc "SELECT 1 FROM pg_roles WHERE rolname='idol'" | grep -q 1 || \
-    sudo -u postgres psql -c "CREATE USER idol WITH PASSWORD 'idol_secret';"
-sudo -u postgres psql -tc "SELECT 1 FROM pg_database WHERE datname='idol_db'" | grep -q 1 || \
-    sudo -u postgres psql -c "CREATE DATABASE idol_db OWNER idol;"
-echo "  Database ready. (Change the default password in production!)"
+# --- 6. Start PostgreSQL via Docker ---
+echo "[6/7] Starting PostgreSQL (Docker)..."
+cd "$APP_DIR"
+sudo -u "$APP_USER" docker compose up -d db
+
+# Wait for PostgreSQL to be ready
+echo "  Waiting for PostgreSQL..."
+for i in {1..30}; do
+    if sudo -u "$APP_USER" docker compose exec -T db pg_isready -U idol -d idol_db &>/dev/null; then
+        echo "  PostgreSQL ready!"
+        break
+    fi
+    sleep 1
+    if [ "$i" -eq 30 ]; then
+        echo "  ⚠️  PostgreSQL didn't start in 30s. Check: docker compose logs db"
+    fi
+done
 
 # --- 7. Install systemd service ---
 echo "[7/7] Installing systemd service..."
@@ -89,4 +107,9 @@ echo "  2. Run migration:    sudo -u idol /opt/idol-platform/.venv/bin/alembic -
 echo "  3. Start bot:        sudo systemctl start idol"
 echo "  4. Check status:     sudo systemctl status idol"
 echo "  5. View logs:        sudo journalctl -u idol -f"
+echo ""
+echo "PostgreSQL:"
+echo "  Status:   docker compose -f /opt/idol-platform/docker-compose.yml ps"
+echo "  Logs:     docker compose -f /opt/idol-platform/docker-compose.yml logs db"
+echo "  Shell:    docker compose -f /opt/idol-platform/docker-compose.yml exec db psql -U idol -d idol_db"
 echo ""

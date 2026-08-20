@@ -1,7 +1,7 @@
 [Unit]
 Description=IDOL Platform - Telegram Bot
-After=network.target postgresql.service
-Wants=postgresql.service
+After=network.target docker.service
+Wants=docker.service
 
 [Service]
 Type=simple

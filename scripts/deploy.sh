@@ -2,7 +2,7 @@
 # =============================================================
 # IDOL Platform — Deploy (pull + migrate + restart)
 # =============================================================
-# Usage: sudo bash scripts/deploy.sh
+# Usage: sudo bash /opt/idol-platform/scripts/deploy.sh
 # =============================================================
 set -euo pipefail
 
@@ -11,17 +11,22 @@ APP_USER="idol"
 
 echo "=== IDOL Deploy ==="
 
-# Pull latest
-echo "[1/3] Pulling latest code..."
+# Ensure PostgreSQL is running
+echo "[1/4] Checking PostgreSQL..."
 cd "$APP_DIR"
+sudo -u "$APP_USER" docker compose up -d db
+sleep 2
+
+# Pull latest
+echo "[2/4] Pulling latest code..."
 sudo -u "$APP_USER" git pull origin main
 
 # Install deps (in case requirements.txt changed)
-echo "[2/3] Updating dependencies..."
+echo "[3/4] Updating dependencies..."
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r requirements.txt -q
 
 # Run migrations
-echo "[3/3] Running migrations..."
+echo "[4/4] Running migrations..."
 sudo -u "$APP_USER" "$APP_DIR/.venv/bin/alembic" -c "$APP_DIR/alembic.ini" upgrade head
 
 # Restart service

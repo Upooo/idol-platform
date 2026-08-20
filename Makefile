@@ -34,17 +34,17 @@ migration: ## Create a new migration (usage: make migration msg="description")
 downgrade: ## Downgrade one migration
 	alembic downgrade -1
 
-up: ## Start docker services
-	docker compose up -d
+up: ## Start PostgreSQL (Docker)
+	docker compose up -d db
 
-down: ## Stop docker services
+down: ## Stop PostgreSQL (Docker)
 	docker compose down
 
-logs: ## View docker logs
-	docker compose logs -f app
-
-shell: ## Open Python shell with app context
-	python -c "import asyncio; from src.config import settings; print(f'IDOL Platform [{settings.app_env}]'); import code; code.interact(local=locals())"
+logs: ## View PostgreSQL logs
+	docker compose logs -f db
 
 db-shell: ## Open psql shell
 	docker compose exec db psql -U idol -d idol_db
+
+shell: ## Open Python shell with app context
+	python -c "import asyncio; from src.config import settings; print(f'IDOL Platform [{settings.app_env}]'); import code; code.interact(local=locals())"
