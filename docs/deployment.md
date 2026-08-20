@@ -9,15 +9,16 @@ VPS lu
 └── .env (config, chmod 600)
 ```
 
-PostgreSQL jalan di Docker biar ga perlu install/config manual.
-Bot jalan di systemd biar auto-restart + auto-start on boot.
-
 ## Prerequisites
 
-- VPS Ubuntu 22.04+ (atau Debian 12+)
-- Python 3.11+
+- VPS Ubuntu 20.04+ atau Debian 11+
+- **Python 3.10+** (di-install otomatis via deadsnakes PPA kalau belum ada)
 - Akses root/sudo
 - Docker (di-install otomatis sama setup script)
+
+> **Note:** Ubuntu 20.04 bawaan cuma Python 3.8. Setup script otomatis
+> install Python 3.10 via [deadsnakes PPA](https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa)
+> kalau Python lu kurang dari 3.10. Ga perlu manual.
 
 ## Quick Setup (Pertama Kali)
 
@@ -36,9 +37,9 @@ sudo bash scripts/setup.sh
 ```
 
 Script ini otomatis:
-- Install Python 3.11, git, curl
+- Cek Python version, install 3.10 via deadsnakes kalau kurang
 - Install Docker + Docker Compose
-- Bikin user `idol` (non-root, aman)
+- Bikin user `idol` (non-root)
 - Setup Python venv + install dependencies
 - Copy `.env.example` → `.env`
 - Start PostgreSQL di Docker (auto-restart)
@@ -61,25 +62,13 @@ DATABASE_URL udah default ke PostgreSQL Docker:
 DATABASE_URL=postgresql+asyncpg://idol:idol_secret@localhost:5432/idol_db
 ```
 
-Opsional (IDOL TEAM group):
-```
-IDOL_TEAM_GROUP_ID=-100xxxxxxxxxx
-TOPIC_SYSTEM_ID=2
-TOPIC_ORDERS_ID=3
-TOPIC_STAFF_ID=4
-```
-
 ### 4. Migration + Start
 
 ```bash
-# Jalanin migration
 sudo -u idol /opt/idol-platform/.venv/bin/alembic \
     -c /opt/idol-platform/alembic.ini upgrade head
 
-# Start bot
 sudo systemctl start idol
-
-# Cek jalan
 sudo systemctl status idol
 ```
 
@@ -102,29 +91,18 @@ sudo journalctl -u idol -n 50    # 50 baris terakhir
 ### Database
 
 ```bash
-# Cek PostgreSQL container
 cd /opt/idol-platform
-docker compose ps
-
-# Log database
-docker compose logs db
-
-# Masuk psql shell
-docker compose exec db psql -U idol -d idol_db
-
-# Restart database
-docker compose restart db
+docker compose ps                              # Cek status
+docker compose exec db psql -U idol -d idol_db  # Masuk DB
+docker compose logs db                          # Log database
+docker compose restart db                       # Restart DB
 ```
 
 ### Update / Deploy
 
-Setiap kali push update ke GitHub:
-
 ```bash
 sudo bash /opt/idol-platform/scripts/deploy.sh
 ```
-
-Satu command: cek db → git pull → deps → migrate → restart.
 
 ---
 
@@ -133,15 +111,21 @@ Satu command: cek db → git pull → deps → migrate → restart.
 ### Bot ga mau start
 ```bash
 sudo journalctl -u idol -n 30 --no-pager
-# Biasanya: .env belum diisi, database belum ready, token salah
 ```
 
 ### Database error
 ```bash
 cd /opt/idol-platform
-docker compose ps          # Cek container status
-docker compose logs db     # Cek error
-docker compose restart db  # Restart
+docker compose ps
+docker compose logs db
+docker compose restart db
+```
+
+### Python version error
+```bash
+# Cek Python di venv
+/opt/idol-platform/.venv/bin/python --version
+# Harus >= 3.10
 ```
 
 ### Permission error
@@ -153,9 +137,9 @@ sudo chmod 600 /opt/idol-platform/.env
 ### Reset database (HATI-HATI - data ilang)
 ```bash
 cd /opt/idol-platform
-docker compose down -v     # Hapus container + data
-docker compose up -d db    # Bikin ulang
-# Tunggu 5 detik
+docker compose down -v
+docker compose up -d db
+sleep 5
 sudo -u idol /opt/idol-platform/.venv/bin/alembic \
     -c /opt/idol-platform/alembic.ini upgrade head
 sudo systemctl restart idol
@@ -166,7 +150,7 @@ sudo systemctl restart idol
 ## Security Notes
 
 - Bot jalan sebagai user `idol` (bukan root)
-- `.env` di-chmod 600 (cuma idol yang bisa baca)
-- PostgreSQL cuma listen di 127.0.0.1 (ga bisa diakses dari luar)
-- systemd `ProtectSystem=strict` (bot ga bisa nulis ke system files)
+- `.env` di-chmod 600
+- PostgreSQL cuma listen di 127.0.0.1
+- systemd `ProtectSystem=strict`
 - Database password default `idol_secret` — **GANTI di production!**
