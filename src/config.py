@@ -21,47 +21,43 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # ── App ──────────────────────────────────────────────
+    # ── App ──
     app_name: str = "IDOL"
     app_env: str = "development"
     debug: bool = False
     log_level: str = "INFO"
     timezone: str = "Asia/Jakarta"
 
-    # ── Telegram: HQ Bot ─────────────────────────────────
+    # ── Telegram: HQ Bot ──
     hq_bot_token: SecretStr
     hq_bot_username: str = "IDOLHQBot"
 
-    # ── Founder ──────────────────────────────────────────
-    # The ONLY way to define the Founder identity.
-    # Cannot be changed via bot operations.
+    # ── Founder ──
     founder_telegram_id: int
 
-    # ── Staff ────────────────────────────────────────────
-    # Optional pre-configured Owner Telegram IDs.
-    # Can also be assigned at runtime by Founder.
+    # ── Staff ──
     owner_telegram_ids: list[int] = []
+    admin_telegram_ids: list[int] = []
 
-    # ── IDOL Team Group ──────────────────────────────────
+    # ── IDOL Team Group ──
     idol_team_group_id: int | None = None
     topic_system_id: int | None = None
     topic_orders_id: int | None = None
-    topic_customers_id: int | None = None
     topic_staff_id: int | None = None
 
-    # ── Database ─────────────────────────────────────────
+    # ── Database ──
     database_url: SecretStr
 
-    # ── AI (disabled for V1) ─────────────────────────────
+    # ── AI (disabled for V1) ──
     enable_ai: bool = False
     groq_api_key: SecretStr | None = None
-    ai_model: str = "openai/gpt-oss-120b"
+    ai_model: str = ""
 
-    # ── Validators ───────────────────────────────────────
+    # ── Validators ──
 
-    @field_validator("owner_telegram_ids", mode="before")
+    @field_validator("owner_telegram_ids", "admin_telegram_ids", mode="before")
     @classmethod
-    def parse_owner_ids(cls, v: str | list[int]) -> list[int]:
+    def parse_id_list(cls, v: str | list[int]) -> list[int]:
         if isinstance(v, str):
             if not v.strip():
                 return []
@@ -80,6 +76,9 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return self.app_env == "production"
 
+    @property
+    def has_team_group(self) -> bool:
+        return self.idol_team_group_id is not None
 
-# Singleton — import this everywhere
+
 settings = Settings()  # type: ignore[call-arg]

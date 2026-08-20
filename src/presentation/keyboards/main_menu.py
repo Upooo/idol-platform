@@ -21,22 +21,17 @@ def main_menu_keyboard(user: User) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="👤 My Profile", callback_data="profile")]
     )
 
-    if user.has_permission(PermissionKey.USERS_VIEW):
-        buttons.append(
-            [InlineKeyboardButton(text="👥 Users", callback_data="users_list")]
-        )
-
     if user.has_permission(PermissionKey.STAFF_VIEW):
         buttons.append(
-            [InlineKeyboardButton(text="💼 Staff", callback_data="staff_list")]
+            [InlineKeyboardButton(text="👥 Staff", callback_data="staff_list")]
         )
 
-    if user.has_permission(PermissionKey.ROLES_VIEW):
+    if user.has_permission(PermissionKey.ROLES_ASSIGN):
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="🛠 Roles & Permissions",
-                    callback_data="roles_view",
+                    text="🛠 Manage Roles",
+                    callback_data="roles_manage",
                 )
             ]
         )

@@ -59,14 +59,23 @@ async def main() -> None:
 
     # Register routers
     from src.presentation.handlers.start import router as start_router
+    from src.presentation.handlers.roles import router as roles_router
 
     dp.include_router(start_router)
+    dp.include_router(roles_router)
+
+    # --- Startup notification ---
+    from src.infrastructure.notification.service import NotificationService
+
+    notif = NotificationService(bot)
+    await notif.send_startup_notification()
 
     # --- Start polling ---
     log.info(
         "bot_starting",
         username=settings.hq_bot_username,
         founder_id=settings.founder_telegram_id,
+        team_group=settings.idol_team_group_id or "not configured",
     )
 
     try:

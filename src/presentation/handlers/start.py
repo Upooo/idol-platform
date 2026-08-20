@@ -7,7 +7,7 @@ from aiogram import Router
 from aiogram.filters import CommandStart, Command
 from aiogram.types import CallbackQuery, Message
 
-from src.domain.enums import ROLE_HIERARCHY
+from src.domain.enums import ROLE_HIERARCHY, PermissionKey
 from src.domain.models import User
 from src.presentation.keyboards.main_menu import (
     back_button,
@@ -43,16 +43,26 @@ async def cmd_start(message: Message, platform_user: User) -> None:
 
 @router.message(Command("help"))
 async def cmd_help(message: Message, platform_user: User) -> None:
-    """Help text."""
-    text = (
-        "📖 <b>IDOL Platform — Help</b>\n\n"
-        "/start — Main menu\n"
-        "/help — This message\n"
-        "/myid — Your Telegram ID\n"
-        "/myroles — Your assigned roles\n"
-        "/cancel — Cancel current operation\n"
-    )
-    await message.answer(text, parse_mode="HTML")
+    """Help text — role-aware command list."""
+    lines = [
+        "📖 <b>IDOL Platform — Help</b>\n",
+        "<b>Everyone:</b>",
+        "/start — Main menu",
+        "/help — This message",
+        "/myid — Your Telegram ID",
+        "/myroles — Your assigned roles",
+        "/cancel — Cancel current operation",
+    ]
+
+    if platform_user.has_permission(PermissionKey.STAFF_VIEW):
+        lines.append("\n<b>Staff Management:</b>")
+        lines.append("/staff — List all staff")
+
+    if platform_user.has_permission(PermissionKey.ROLES_ASSIGN):
+        lines.append("/assign &lt;id&gt; — Assign role to user")
+        lines.append("/revoke &lt;id&gt; — Remove role from user")
+
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 @router.message(Command("cancel"))
