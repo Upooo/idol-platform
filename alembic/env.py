@@ -19,6 +19,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from src.config import settings  # noqa: E402
+from src.infrastructure.database.tables import Base  # noqa: E402
 
 config = context.config
 
@@ -30,9 +31,8 @@ config.set_main_option(
     settings.database_url.get_secret_value(),
 )
 
-# Import metadata for autogenerate
-# (will be populated in Phase 2 when tables.py is created)
-target_metadata = None
+# Use table metadata for Alembic autogenerate
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
