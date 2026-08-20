@@ -8,6 +8,7 @@ set -euo pipefail
 
 APP_DIR="/opt/idol-platform"
 APP_USER="idol"
+PIP="$APP_DIR/.venv/bin/python -m pip"
 
 echo "=== IDOL Deploy ==="
 
@@ -21,10 +22,10 @@ sleep 2
 echo "[2/4] Pulling latest code..."
 sudo -u "$APP_USER" git pull origin main
 
-# Install deps
+# Update build tools + deps
 echo "[3/4] Updating dependencies..."
-sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -r requirements.txt -q 2>/dev/null || \
-    sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -e "$APP_DIR" -q
+sudo -u "$APP_USER" $PIP install --upgrade pip "setuptools>=68" wheel -q
+sudo -u "$APP_USER" $PIP install -e "$APP_DIR" -q
 
 # Migrations
 echo "[4/4] Running migrations..."

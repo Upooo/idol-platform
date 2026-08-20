@@ -22,7 +22,6 @@ echo "========================================"
 
 # --- Helper: find a suitable Python >= 3.MIN_PYTHON_MINOR ---
 find_python() {
-    # Check from newest to oldest
     for minor in 12 11 10; do
         if [ "$minor" -lt "$MIN_PYTHON_MINOR" ]; then
             continue
@@ -34,7 +33,6 @@ find_python() {
         fi
     done
 
-    # Check generic python3
     if command -v python3 &>/dev/null; then
         local ver
         ver=$(python3 -c 'import sys; print(sys.version_info.minor)' 2>/dev/null || echo "0")
@@ -69,8 +67,8 @@ else
 fi
 
 # Ensure venv module is available
-VENV_PKG="${PYTHON_CMD}-venv"
 if ! $PYTHON_CMD -m venv --help &>/dev/null 2>&1; then
+    VENV_PKG="${PYTHON_CMD}-venv"
     echo "  Installing ${VENV_PKG}..."
     apt-get install -y -qq "${VENV_PKG}" 2>/dev/null || \
         apt-get install -y -qq python3-venv 2>/dev/null || true
@@ -108,10 +106,26 @@ fi
 echo "[5/7] Setting up Python environment..."
 cd "$APP_DIR"
 chown -R "$APP_USER:$APP_USER" "$APP_DIR"
+
+# Create venv
 sudo -u "$APP_USER" $PYTHON_CMD -m venv "$APP_DIR/.venv"
-sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install --upgrade pip -q
-sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" install -e "$APP_DIR" -q
+
+# Upgrade build tools FIRST (before any install)
+# Ubuntu 20.04's python3.10-venv bundles setuptools 65.5.0 which is
+# too old for PEP 660 editable installs. pyproject.toml requires >=68.
+echo "  Upgrading build tools (pip, setuptools, wheel)..."
+sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" -m pip install \
+    --upgrade pip "setuptools>=68" wheel -q
+
+# Install project + dependencies
+echo "  Installing project dependencies..."
+sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" -m pip install \
+    -e "$APP_DIR" -q
+
 echo "  Dependencies installed."
+echo "  pip:        $(sudo -u "$APP_USER" "$APP_DIR/.venv/bin/pip" --version | awk '{print $2}')"
+echo "  setuptools: $(sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" -c 'import setuptools; print(setuptools.__version__)')"
+echo "  wheel:      $(sudo -u "$APP_USER" "$APP_DIR/.venv/bin/python" -c 'import wheel; print(wheel.__version__)')"
 
 # --- 6. Setup .env + Start PostgreSQL ---
 echo "[6/7] Environment & database..."
