@@ -1,0 +1,31 @@
+[Unit]
+Description=IDOL Platform - Telegram Bot
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=idol
+Group=idol
+WorkingDirectory=/opt/idol-platform
+EnvironmentFile=/opt/idol-platform/.env
+ExecStart=/opt/idol-platform/.venv/bin/python -m src.main
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=idol
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/idol-platform
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
