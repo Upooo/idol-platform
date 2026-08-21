@@ -11,14 +11,7 @@ from enum import Enum, unique
 
 @unique
 class RoleType(str, Enum):
-    """Built-in role types with fixed hierarchy.
-
-    hierarchy_level determines the ceiling of authority:
-    - A user can only manage roles with a HIGHER level number
-      (lower authority) than their own highest role.
-    - Founder (level 1) can manage everyone.
-    - Roles at the same level cannot manage each other.
-    """
+    """Built-in role types with fixed hierarchy."""
 
     FOUNDER = "founder"
     OWNER = "owner"
@@ -27,8 +20,6 @@ class RoleType(str, Enum):
     CUSTOMER = "customer"
 
 
-# Fixed hierarchy levels — not configurable at runtime.
-# Lower number = higher authority.
 ROLE_HIERARCHY: dict[RoleType, int] = {
     RoleType.FOUNDER: 1,
     RoleType.OWNER: 2,
@@ -40,42 +31,35 @@ ROLE_HIERARCHY: dict[RoleType, int] = {
 
 @unique
 class PermissionKey(str, Enum):
-    """Permission keys used in the RBAC system.
+    """Permission keys used in the RBAC system."""
 
-    Permissions are explicit and granular.
-    A role has ONLY the permissions assigned to it via role_permissions.
-    Founder is the sole exception: Founder has ALL permissions implicitly.
-
-    Naming convention: <resource>.<action>
-    """
-
-    # ── Users ─────────────────────────────────────
+    # ── Users
     USERS_VIEW = "users.view"
     USERS_CREATE = "users.create"
     USERS_UPDATE = "users.update"
     USERS_DELETE = "users.delete"
 
-    # ── Staff ─────────────────────────────────────
+    # ── Staff
     STAFF_VIEW = "staff.view"
-    STAFF_MANAGE = "staff.manage"        # assign/remove staff roles
+    STAFF_MANAGE = "staff.manage"
 
-    # ── Roles ─────────────────────────────────────
+    # ── Roles
     ROLES_VIEW = "roles.view"
-    ROLES_MANAGE = "roles.manage"        # create/edit/delete roles
-    ROLES_ASSIGN = "roles.assign"        # assign roles to users
+    ROLES_MANAGE = "roles.manage"
+    ROLES_ASSIGN = "roles.assign"
 
-    # ── Permissions ───────────────────────────────
+    # ── Permissions
     PERMISSIONS_VIEW = "permissions.view"
-    PERMISSIONS_MANAGE = "permissions.manage"  # edit role-permission mappings
+    PERMISSIONS_MANAGE = "permissions.manage"
 
-    # ── Group ─────────────────────────────────────
-    GROUP_MANAGE = "group.manage"        # group settings, title, description
-    GROUP_MODERATE = "group.moderate"    # ban, mute, warn, delete messages
-    GROUP_INVITE = "group.invite"        # create invite links
+    # ── Group
+    GROUP_MANAGE = "group.manage"        # promote, demote, settings
+    GROUP_MODERATE = "group.moderate"    # ban, mute, kick, pin, delete
+    GROUP_INVITE = "group.invite"
 
-    # ── System ────────────────────────────────────
-    SYSTEM_SETTINGS = "system.settings"  # bot-level settings
-    SYSTEM_AUDIT = "system.audit"        # view audit logs
+    # ── System
+    SYSTEM_SETTINGS = "system.settings"
+    SYSTEM_AUDIT = "system.audit"
 
 
 @unique
@@ -104,6 +88,12 @@ class AuditAction(str, Enum):
     # Permissions
     PERMISSION_GRANTED = "permission.granted"
     PERMISSION_REVOKED = "permission.revoked"
+
+    # Group
+    GROUP_BAN = "group.ban"
+    GROUP_KICK = "group.kick"
+    GROUP_PROMOTE = "group.promote"
+    GROUP_DEMOTE = "group.demote"
 
     # Auth
     AUTH_DENIED = "auth.denied"

@@ -1,4 +1,7 @@
-"""Keyboard builders for the HQ bot."""
+"""Keyboard builders for the HQ bot.
+
+Elegant, minimal button labels.
+"""
 
 from __future__ import annotations
 
@@ -9,28 +12,24 @@ from src.domain.models import User
 
 
 def main_menu_keyboard(user: User) -> InlineKeyboardMarkup:
-    """Build the main menu keyboard based on user permissions.
-
-    Buttons are shown based on actual permissions —
-    this is a UI hint only; backend always re-verifies.
-    """
+    """Build the main menu keyboard based on user permissions."""
     buttons: list[list[InlineKeyboardButton]] = []
 
-    # Everyone can see their info
+    # Everyone
     buttons.append(
-        [InlineKeyboardButton(text="👤 My Profile", callback_data="profile")]
+        [InlineKeyboardButton(text="◈ Profile", callback_data="profile")]
     )
 
     if user.has_permission(PermissionKey.STAFF_VIEW):
         buttons.append(
-            [InlineKeyboardButton(text="👥 Staff", callback_data="staff_list")]
+            [InlineKeyboardButton(text="◈ Staff", callback_data="staff_list")]
         )
 
     if user.has_permission(PermissionKey.ROLES_ASSIGN):
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="🛠 Manage Roles",
+                    text="◈ Roles",
                     callback_data="roles_manage",
                 )
             ]
@@ -38,14 +37,14 @@ def main_menu_keyboard(user: User) -> InlineKeyboardMarkup:
 
     if user.has_permission(PermissionKey.SYSTEM_AUDIT):
         buttons.append(
-            [InlineKeyboardButton(text="📝 Audit Log", callback_data="audit_log")]
+            [InlineKeyboardButton(text="◈ Audit", callback_data="audit_log")]
         )
 
     if user.has_permission(PermissionKey.SYSTEM_SETTINGS):
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text="⚙️ Settings", callback_data="settings"
+                    text="◈ Settings", callback_data="settings"
                 )
             ]
         )
@@ -57,6 +56,6 @@ def back_button(callback_data: str = "main_menu") -> InlineKeyboardMarkup:
     """Single back button."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Back", callback_data=callback_data)]
+            [InlineKeyboardButton(text="◁ Back", callback_data=callback_data)]
         ]
     )

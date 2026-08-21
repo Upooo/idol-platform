@@ -60,9 +60,11 @@ async def main() -> None:
     # Register routers
     from src.presentation.handlers.start import router as start_router
     from src.presentation.handlers.roles import router as roles_router
+    from src.presentation.handlers.group import router as group_router
 
     dp.include_router(start_router)
     dp.include_router(roles_router)
+    dp.include_router(group_router)
 
     # --- Startup notification ---
     from src.infrastructure.notification.service import NotificationService
