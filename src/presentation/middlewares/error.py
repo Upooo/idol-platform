@@ -17,16 +17,15 @@ from src.domain.exceptions import (
 
 log = structlog.get_logger()
 
-# User-friendly error messages
 ERROR_MESSAGES = {
-    PermissionDeniedError: "⛔ You don't have permission for this action.",
-    RoleHierarchyError: "⛔ You cannot manage users at or above your role level.",
-    FounderProtectionError: "⛔ The Founder identity is protected and cannot be modified.",
+    PermissionDeniedError: "⚠️ You don't have permission for this.",
+    RoleHierarchyError: "⚠️ Can't manage users at or above your role.",
+    FounderProtectionError: "⚠️ Founder identity is protected.",
 }
 
 
 class ErrorMiddleware(BaseMiddleware):
-    """Catch domain exceptions and send user-friendly messages."""
+    """Catch domain exceptions and show user-friendly messages."""
 
     async def __call__(
         self,
@@ -37,7 +36,7 @@ class ErrorMiddleware(BaseMiddleware):
         try:
             return await handler(event, data)
         except DomainError as e:
-            msg = ERROR_MESSAGES.get(type(e), f"⛔ {e}")
+            msg = ERROR_MESSAGES.get(type(e), f"⚠️ {e}")
             log.warning(
                 "domain_error",
                 error_type=type(e).__name__,
@@ -53,9 +52,14 @@ class ErrorMiddleware(BaseMiddleware):
         except Exception:
             log.exception("unhandled_error")
 
+            msg = (
+                "⚠️ Something went wrong.\n\n"
+                "Please try again."
+            )
+
             if isinstance(event, Message):
-                await event.answer("❌ An unexpected error occurred.")
+                await event.answer(msg)
             elif isinstance(event, CallbackQuery):
-                await event.answer("❌ Something went wrong.", show_alert=True)
+                await event.answer("Something went wrong.", show_alert=True)
 
             return None

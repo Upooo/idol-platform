@@ -1,7 +1,6 @@
 """Role management handlers — assign/revoke roles via bot.
 
 Supports targeting via reply, @username, or telegram ID.
-All operations enforce: permission check + hierarchy + founder protection.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, AsyncSession
 
 from src.application import auth_service
 from src.application.audit_service import AuditService
-from src.application.target_resolver import resolve_target
+from src.application.target_resolver import ROLE_ICONS, resolve_target
 from src.application.user_resolver import resolve_user
 from src.domain.enums import (
     AuditAction,
@@ -36,10 +35,8 @@ from src.infrastructure.database.repositories import (
 log = structlog.get_logger()
 router = Router(name="roles")
 
-LINE = "─" * 28
 
-
-# ━━━ /staff — list all staff ━━━
+# ━━━ /staff ━━━
 
 @router.message(Command("staff"))
 async def cmd_staff(
@@ -47,7 +44,7 @@ async def cmd_staff(
     platform_user: User,
     db_session_factory: async_sessionmaker[AsyncSession],
 ) -> None:
-    """List all users with roles above Customer."""
+    """List all team members."""
     auth_service.require_permission(platform_user, PermissionKey.STAFF_VIEW)
 
     async with db_session_factory() as session:
@@ -57,11 +54,7 @@ async def cmd_staff(
         from src.infrastructure.database.tables import UserRoleTable, UserTable
 
         all_roles = await role_repo.get_all()
-        lines = [
-            f"{LINE}",
-            f"◈ <b>Staff Directory</b>",
-            f"{LINE}",
-        ]
+        lines = ["👥 <b>Team</b>\n"]
 
         has_staff = False
         for role_row in all_roles:
@@ -79,24 +72,22 @@ async def cmd_staff(
 
             if users:
                 has_staff = True
-                level = ROLE_HIERARCHY.get(RoleType(role_row.name), 99)
-                lines.append(
-                    f"\n<b>▸ {role_row.name.upper()}</b> ⌊{level}⌋"
-                )
+                icon = ROLE_ICONS.get(role_row.name, "")
+                lines.append(f"<b>{icon} {role_row.name.title()}</b>")
                 for u in users:
                     name = u.first_name or u.username or str(u.telegram_id)
-                    uname = f" (@{u.username})" if u.username else ""
-                    lines.append(
-                        f"  ◦ {name}{uname} · <code>{u.telegram_id}</code>"
-                    )
+                    uname = f" · @{u.username}" if u.username else ""
+                    lines.append(f"  {name}{uname}")
+                lines.append("")  # spacing
 
     if not has_staff:
-        lines.append("\n<i>No staff assigned yet</i>")
+        lines.append("No team members yet.\n")
+        lines.append("Use /assign to add someone.")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-# ━━━ /assign — start role assignment ━━━
+# ━━━ /assign ━━━
 
 @router.message(Command("assign"))
 async def cmd_assign(
@@ -104,30 +95,26 @@ async def cmd_assign(
     platform_user: User,
     bot: Bot,
 ) -> None:
-    """Assign a role. Usage: /assign (reply | @username | ID)"""
+    """Assign a role. Reply, @username, or ID."""
     auth_service.require_permission(
         platform_user, PermissionKey.ROLES_ASSIGN
     )
 
-    # Parse args after /assign
     args = message.text.split(maxsplit=1) if message.text else []
     args_text = args[1] if len(args) > 1 else None
 
     target = await resolve_target(message, bot, args_text)
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Assign Role</b>\n"
-            f"{LINE}\n\n"
-            f"<b>Usage:</b>\n"
-            f"  ▸ Reply to a message + <code>/assign</code>\n"
-            f"  ▸ <code>/assign @username</code>\n"
-            f"  ▸ <code>/assign 123456789</code>",
+            "🔑 <b>Assign Role</b>\n\n"
+            "Reply to a message, or:\n"
+            "<code>/assign @username</code>\n"
+            "<code>/assign 123456789</code>",
             parse_mode="HTML",
         )
         return
 
-    # Build role selection keyboard
+    # Build role selection
     actor_role = platform_user.highest_role
     actor_level = (
         ROLE_HIERARCHY.get(actor_role.role_type, 999)
@@ -143,33 +130,28 @@ async def cmd_assign(
         if role_type == RoleType.CUSTOMER:
             continue
 
+        icon = ROLE_ICONS.get(role_type.value, "")
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text=f"{role_type.value.upper()} ⌊{level}⌋",
+                    text=f"{icon} {role_type.value.title()}",
                     callback_data=f"assign:{target.telegram_id}:{role_type.value}",
                 )
             ]
         )
 
     if not buttons:
-        await message.answer("◈ No assignable roles available.")
+        await message.answer("No assignable roles available.")
         return
 
     buttons.append(
-        [
-            InlineKeyboardButton(
-                text="◇ Cancel", callback_data="main_menu"
-            )
-        ]
+        [InlineKeyboardButton(text="← Cancel", callback_data="main_menu")]
     )
 
     await message.answer(
-        f"{LINE}\n"
-        f"◈ <b>Assign Role</b>\n"
-        f"{LINE}\n\n"
-        f"▸ Target: {target.display_tag}\n\n"
-        f"<i>Select a role:</i>",
+        f"🔑 <b>Assign Role</b>\n\n"
+        f"{target.display_tag}\n\n"
+        f"Select a role:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
@@ -182,7 +164,6 @@ async def cb_assign_role(
     db_session_factory: async_sessionmaker[AsyncSession],
     bot: Bot,
 ) -> None:
-    """Execute role assignment after selection."""
     parts = callback.data.split(":")  # type: ignore
     if len(parts) != 3:
         await callback.answer("Invalid action.", show_alert=True)
@@ -197,7 +178,6 @@ async def cb_assign_role(
             role_repo = RoleRepository(session)
             audit = AuditService(session)
 
-            # Resolve target user
             target_row = await user_repo.get_by_telegram_id(target_tg_id)
             if target_row is None:
                 target_row = await user_repo.create(
@@ -207,14 +187,12 @@ async def cb_assign_role(
 
             target_user = await resolve_user(session, target_tg_id)
 
-            # Auth
             auth_service.authorize_role_change(
                 platform_user,
                 target_user,
                 PermissionKey.ROLES_ASSIGN,
             )
 
-            # Check if already has role
             has_role = await role_repo.has_role(
                 target_row.id, role_name
             )
@@ -225,7 +203,6 @@ async def cb_assign_role(
                 )
                 return
 
-            # Find role
             role = await role_repo.get_by_name(role_name)
             if role is None:
                 await callback.answer(
@@ -233,14 +210,12 @@ async def cb_assign_role(
                 )
                 return
 
-            # Assign
             await role_repo.assign_role(
                 user_id=target_row.id,
                 role_id=role.id,
                 assigned_by=platform_user.id,
             )
 
-            # Audit
             await audit.log(
                 action=AuditAction.ROLE_ASSIGNED,
                 actor_id=platform_user.id,
@@ -252,45 +227,38 @@ async def cb_assign_role(
                 },
             )
 
-    # Resolve target info for display
+    # Resolve target info
     try:
         chat = await bot.get_chat(target_tg_id)
         target_name = chat.first_name or chat.username or str(target_tg_id)
-        target_uname = f" (@{chat.username})" if chat.username else ""
+        target_uname = f" · @{chat.username}" if chat.username else ""
     except Exception:
         target_name = str(target_tg_id)
         target_uname = ""
 
-    actor_name = platform_user.full_name
+    icon = ROLE_ICONS.get(role_name, "")
 
     # Notify group
     from src.infrastructure.notification.service import NotificationService
-
     notif = NotificationService(bot)
     await notif.notify_staff(
-        f"{LINE}\n"
-        f"◈ <b>Role Assigned</b>\n"
-        f"{LINE}\n\n"
-        f"▸ User: <b>{target_name}</b>{target_uname}\n"
-        f"  ID: <code>{target_tg_id}</code>\n"
-        f"▸ Role: <b>{role_name.upper()}</b>\n"
-        f"▸ By: {actor_name}"
+        f"✅ <b>Role Assigned</b>\n\n"
+        f"{target_name}{target_uname}\n"
+        f"→ {icon} {role_name.title()}\n\n"
+        f"<i>by {platform_user.full_name}</i>"
     )
 
     if callback.message:
         await callback.message.edit_text(
-            f"{LINE}\n"
-            f"◈ <b>Role Assigned</b>\n"
-            f"{LINE}\n\n"
-            f"▸ <b>{target_name}</b>{target_uname}\n"
-            f"  → <b>{role_name.upper()}</b>\n\n"
-            f"<i>Assignment complete</i>",
+            f"✅ <b>Role Assigned</b>\n\n"
+            f"{target_name}{target_uname}\n"
+            f"→ {icon} <b>{role_name.title()}</b>",
             parse_mode="HTML",
         )
-    await callback.answer("Role assigned!")
+    await callback.answer("Done!")
 
 
-# ━━━ /revoke — start role removal ━━━
+# ━━━ /revoke ━━━
 
 @router.message(Command("revoke"))
 async def cmd_revoke(
@@ -299,7 +267,7 @@ async def cmd_revoke(
     db_session_factory: async_sessionmaker[AsyncSession],
     bot: Bot,
 ) -> None:
-    """Remove a role. Usage: /revoke (reply | @username | ID)"""
+    """Remove a role. Reply, @username, or ID."""
     auth_service.require_permission(
         platform_user, PermissionKey.ROLES_ASSIGN
     )
@@ -310,58 +278,49 @@ async def cmd_revoke(
     target = await resolve_target(message, bot, args_text)
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Revoke Role</b>\n"
-            f"{LINE}\n\n"
-            f"<b>Usage:</b>\n"
-            f"  ▸ Reply to a message + <code>/revoke</code>\n"
-            f"  ▸ <code>/revoke @username</code>\n"
-            f"  ▸ <code>/revoke 123456789</code>",
+            "🔑 <b>Revoke Role</b>\n\n"
+            "Reply to a message, or:\n"
+            "<code>/revoke @username</code>\n"
+            "<code>/revoke 123456789</code>",
             parse_mode="HTML",
         )
         return
 
-    # Load target's current roles
     async with db_session_factory() as session:
         user_repo = UserRepository(session)
         role_repo = RoleRepository(session)
 
         target_row = await user_repo.get_by_telegram_id(target.telegram_id)
         if target_row is None:
-            await message.answer("◈ User not found.")
+            await message.answer("User not found.")
             return
 
         user_roles = await role_repo.get_user_roles(target_row.id)
 
     if not user_roles:
-        await message.answer("◈ User has no roles to revoke.")
+        await message.answer("This user has no roles.")
         return
 
     buttons: list[list[InlineKeyboardButton]] = []
     for role_row in user_roles:
+        icon = ROLE_ICONS.get(role_row.name, "")
         buttons.append(
             [
                 InlineKeyboardButton(
-                    text=f"✕ {role_row.name.upper()}",
+                    text=f"✕ {icon} {role_row.name.title()}",
                     callback_data=f"revoke:{target.telegram_id}:{role_row.name}",
                 )
             ]
         )
 
     buttons.append(
-        [
-            InlineKeyboardButton(
-                text="◇ Cancel", callback_data="main_menu"
-            )
-        ]
+        [InlineKeyboardButton(text="← Cancel", callback_data="main_menu")]
     )
 
     await message.answer(
-        f"{LINE}\n"
-        f"◈ <b>Revoke Role</b>\n"
-        f"{LINE}\n\n"
-        f"▸ Target: {target.display_tag}\n\n"
-        f"<i>Select role to remove:</i>",
+        f"🔑 <b>Revoke Role</b>\n\n"
+        f"{target.display_tag}\n\n"
+        f"Select role to remove:",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
     )
@@ -374,7 +333,6 @@ async def cb_revoke_role(
     db_session_factory: async_sessionmaker[AsyncSession],
     bot: Bot,
 ) -> None:
-    """Execute role removal after selection."""
     parts = callback.data.split(":")  # type: ignore
     if len(parts) != 3:
         await callback.answer("Invalid action.", show_alert=True)
@@ -416,7 +374,7 @@ async def cb_revoke_role(
             )
             if not has_role:
                 await callback.answer(
-                    f"User doesn't have {role_name} role.",
+                    f"Doesn't have {role_name} role.",
                     show_alert=True,
                 )
                 return
@@ -436,36 +394,30 @@ async def cb_revoke_role(
                 },
             )
 
-    # Display info
     try:
         chat = await bot.get_chat(target_tg_id)
         target_name = chat.first_name or chat.username or str(target_tg_id)
-        target_uname = f" (@{chat.username})" if chat.username else ""
+        target_uname = f" · @{chat.username}" if chat.username else ""
     except Exception:
         target_name = str(target_tg_id)
         target_uname = ""
 
-    from src.infrastructure.notification.service import NotificationService
+    icon = ROLE_ICONS.get(role_name, "")
 
+    from src.infrastructure.notification.service import NotificationService
     notif = NotificationService(bot)
     await notif.notify_staff(
-        f"{LINE}\n"
-        f"◈ <b>Role Revoked</b>\n"
-        f"{LINE}\n\n"
-        f"▸ User: <b>{target_name}</b>{target_uname}\n"
-        f"  ID: <code>{target_tg_id}</code>\n"
-        f"▸ Role: <b>✕ {role_name.upper()}</b>\n"
-        f"▸ By: {platform_user.full_name}"
+        f"✕ <b>Role Revoked</b>\n\n"
+        f"{target_name}{target_uname}\n"
+        f"✕ {icon} {role_name.title()}\n\n"
+        f"<i>by {platform_user.full_name}</i>"
     )
 
     if callback.message:
         await callback.message.edit_text(
-            f"{LINE}\n"
-            f"◈ <b>Role Revoked</b>\n"
-            f"{LINE}\n\n"
-            f"▸ <b>{target_name}</b>{target_uname}\n"
-            f"  ✕ <b>{role_name.upper()}</b>\n\n"
-            f"<i>Revocation complete</i>",
+            f"✕ <b>Role Revoked</b>\n\n"
+            f"{target_name}{target_uname}\n"
+            f"✕ {icon} <b>{role_name.title()}</b>",
             parse_mode="HTML",
         )
-    await callback.answer("Role revoked!")
+    await callback.answer("Done!")

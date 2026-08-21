@@ -1,7 +1,4 @@
-"""Keyboard builders for the HQ bot.
-
-Elegant, minimal button labels.
-"""
+"""Keyboard builders for the HQ bot."""
 
 from __future__ import annotations
 
@@ -12,50 +9,40 @@ from src.domain.models import User
 
 
 def main_menu_keyboard(user: User) -> InlineKeyboardMarkup:
-    """Build the main menu keyboard based on user permissions."""
+    """Build main menu based on user permissions."""
     buttons: list[list[InlineKeyboardButton]] = []
 
     # Everyone
     buttons.append(
-        [InlineKeyboardButton(text="◈ Profile", callback_data="profile")]
+        [InlineKeyboardButton(text="👤 Profile", callback_data="profile")]
     )
 
     if user.has_permission(PermissionKey.STAFF_VIEW):
         buttons.append(
-            [InlineKeyboardButton(text="◈ Staff", callback_data="staff_list")]
+            [InlineKeyboardButton(text="👥 Team", callback_data="staff_list")]
         )
 
     if user.has_permission(PermissionKey.ROLES_ASSIGN):
         buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="◈ Roles",
-                    callback_data="roles_manage",
-                )
-            ]
+            [InlineKeyboardButton(text="🔑 Roles", callback_data="roles_manage")]
         )
 
     if user.has_permission(PermissionKey.SYSTEM_AUDIT):
         buttons.append(
-            [InlineKeyboardButton(text="◈ Audit", callback_data="audit_log")]
+            [InlineKeyboardButton(text="📋 Audit", callback_data="audit_log")]
         )
 
     if user.has_permission(PermissionKey.SYSTEM_SETTINGS):
         buttons.append(
-            [
-                InlineKeyboardButton(
-                    text="◈ Settings", callback_data="settings"
-                )
-            ]
+            [InlineKeyboardButton(text="⚙️ Settings", callback_data="settings")]
         )
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 def back_button(callback_data: str = "main_menu") -> InlineKeyboardMarkup:
-    """Single back button."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="◁ Back", callback_data=callback_data)]
+            [InlineKeyboardButton(text="← Back", callback_data=callback_data)]
         ]
     )

@@ -1,8 +1,4 @@
-"""Target resolver — resolve a user from reply, @username, or telegram ID.
-
-Used by assign, revoke, and group management commands to accept
-multiple input formats for targeting a user.
-"""
+"""Target resolver — resolve a user from reply, @username, or telegram ID."""
 
 from __future__ import annotations
 
@@ -13,6 +9,15 @@ from aiogram import Bot
 from aiogram.types import Message
 
 log = structlog.get_logger()
+
+
+ROLE_ICONS: dict[str, str] = {
+    "founder": "👑",
+    "owner": "🛡",
+    "admin": "⚙️",
+    "worker": "🔧",
+    "customer": "👤",
+}
 
 
 class TargetInfo:
@@ -37,13 +42,13 @@ class TargetInfo:
 
     @property
     def display_tag(self) -> str:
-        """Formatted display: Name (@username) · ID."""
+        """Clean display: Name · @username · ID"""
         name = self.full_name
         parts = [f"<b>{name}</b>"]
         if self.username:
-            parts.append(f"(@{self.username})")
-        parts.append(f"· <code>{self.telegram_id}</code>")
-        return " ".join(parts)
+            parts.append(f"@{self.username}")
+        parts.append(f"<code>{self.telegram_id}</code>")
+        return " · ".join(parts)
 
 
 async def resolve_target(
@@ -51,13 +56,7 @@ async def resolve_target(
     bot: Bot,
     args_text: str | None = None,
 ) -> TargetInfo | None:
-    """Resolve target user from:
-    1. Reply to a message (highest priority)
-    2. @username argument
-    3. Numeric telegram ID argument
-
-    Returns TargetInfo or None if unresolvable.
-    """
+    """Resolve target user from reply, @username, or numeric ID."""
     # 1. Reply
     if message.reply_to_message and message.reply_to_message.from_user:
         u = message.reply_to_message.from_user
@@ -79,7 +78,6 @@ async def resolve_target(
     # @username
     if arg.startswith("@"):
         username = arg[1:]
-        # Try to get chat info via bot
         try:
             chat = await bot.get_chat(f"@{username}")
             return TargetInfo(
@@ -95,7 +93,6 @@ async def resolve_target(
     # Numeric ID
     if re.match(r"^\d+$", arg):
         tg_id = int(arg)
-        # Try to get user info
         try:
             chat = await bot.get_chat(tg_id)
             return TargetInfo(
@@ -105,7 +102,6 @@ async def resolve_target(
                 username=chat.username,
             )
         except Exception:
-            # User exists but bot can't resolve — return with ID only
             return TargetInfo(telegram_id=tg_id)
 
     return None

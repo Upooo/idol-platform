@@ -1,8 +1,4 @@
-"""Group management handlers — promote, demote, ban, mute, kick, info, pin.
-
-Bot must be admin in the group for these to work.
-All operations check RBAC permissions.
-"""
+"""Group management handlers — promote, demote, ban, mute, kick, info, pin."""
 
 from __future__ import annotations
 
@@ -12,10 +8,7 @@ from datetime import timedelta
 import structlog
 from aiogram import Bot, Router
 from aiogram.filters import Command
-from aiogram.types import (
-    ChatPermissions,
-    Message,
-)
+from aiogram.types import ChatPermissions, Message
 
 from src.application import auth_service
 from src.application.target_resolver import resolve_target
@@ -25,11 +18,8 @@ from src.domain.models import User
 log = structlog.get_logger()
 router = Router(name="group")
 
-LINE = "─" * 28
 
-
-def _parse_duration(text: str | None) -> timedelta | None:
-    """Parse duration string like 1h, 30m, 2d. Default None = 1 hour."""
+def _parse_duration(text: str | None) -> timedelta:
     if not text:
         return timedelta(hours=1)
     match = re.match(r"^(\d+)([mhd])$", text.strip().lower())
@@ -46,108 +36,98 @@ def _parse_duration(text: str | None) -> timedelta | None:
     return timedelta(hours=1)
 
 
-# ━━━ /id — check ID ━━━
+def _group_only_msg() -> str:
+    return "This command works in groups only."
+
+
+def _fmt_duration(d: timedelta) -> str:
+    total_mins = int(d.total_seconds() / 60)
+    if total_mins >= 1440:
+        return f"{total_mins // 1440}d"
+    elif total_mins >= 60:
+        return f"{total_mins // 60}h"
+    return f"{total_mins}m"
+
+
+# ━━━ /id ━━━
 
 @router.message(Command("id"))
 async def cmd_id(message: Message, platform_user: User) -> None:
-    """Check ID: own, replied user, or group."""
-    lines = [
-        f"{LINE}",
-        f"◈ <b>ID Info</b>",
-        f"{LINE}",
-        "",
-    ]
+    lines = []
 
-    # Own ID
-    lines.append(f"▸ You: <code>{platform_user.telegram_id}</code>")
-    if platform_user.username:
-        lines.append(f"  @{platform_user.username}")
+    # Own
+    uname = f" · @{platform_user.username}" if platform_user.username else ""
+    lines.append(f"You: <code>{platform_user.telegram_id}</code>{uname}")
 
-    # Replied user
+    # Replied
     if message.reply_to_message and message.reply_to_message.from_user:
         ru = message.reply_to_message.from_user
         name = ru.first_name or ru.username or str(ru.id)
-        uname = f" (@{ru.username})" if ru.username else ""
-        lines.append(f"\n▸ Reply: <b>{name}</b>{uname}")
-        lines.append(f"  ID: <code>{ru.id}</code>")
+        ru_uname = f" · @{ru.username}" if ru.username else ""
+        lines.append(f"\nReply: <b>{name}</b>{ru_uname}")
+        lines.append(f"ID: <code>{ru.id}</code>")
 
-    # Chat/Group
+    # Group
     if message.chat.type in ("group", "supergroup"):
-        lines.append(f"\n▸ Group: <b>{message.chat.title}</b>")
-        lines.append(f"  ID: <code>{message.chat.id}</code>")
-        lines.append(f"  Type: <code>{message.chat.type}</code>")
+        lines.append(f"\nGroup: <b>{message.chat.title}</b>")
+        lines.append(f"ID: <code>{message.chat.id}</code>")
     elif message.chat.type == "private":
-        lines.append(f"\n▸ Chat: <i>Private</i>")
+        lines.append(f"\nChat: Private")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-# ━━━ /info — group info ━━━
+# ━━━ /info ━━━
 
 @router.message(Command("info"))
 async def cmd_info(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Show group information."""
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     chat = await bot.get_chat(message.chat.id)
     member_count = await bot.get_chat_member_count(message.chat.id)
-
-    # Count admins
     admins = await bot.get_chat_administrators(message.chat.id)
     admin_count = len([a for a in admins if not a.user.is_bot])
     bot_count = len([a for a in admins if a.user.is_bot])
 
     lines = [
-        f"{LINE}",
-        f"◈ <b>Group Info</b>",
-        f"{LINE}",
-        "",
-        f"▸ Title: <b>{chat.title}</b>",
-        f"▸ ID: <code>{chat.id}</code>",
-        f"▸ Type: <code>{chat.type}</code>",
-        f"▸ Members: <b>{member_count}</b>",
-        f"▸ Admins: <b>{admin_count}</b> human · <b>{bot_count}</b> bot",
+        f"ℹ️ <b>{chat.title}</b>\n",
+        f"ID: <code>{chat.id}</code>",
+        f"Type: {chat.type}",
+        f"Members: {member_count}",
+        f"Admins: {admin_count} · Bots: {bot_count}",
     ]
 
     if chat.description:
-        desc = chat.description[:200]
-        lines.append(f"\n▸ Description:\n<i>{desc}</i>")
-
-    if chat.invite_link:
-        lines.append(f"\n▸ Invite: {chat.invite_link}")
+        lines.append(f"\n<i>{chat.description[:200]}</i>")
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
 
-# ━━━ /promote — promote to admin ━━━
+# ━━━ /promote ━━━
 
 @router.message(Command("promote"))
 async def cmd_promote(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Promote user to group admin."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MANAGE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split(maxsplit=1) if message.text else []
-    args_text = args[1] if len(args) > 1 else None
-    target = await resolve_target(message, bot, args_text)
+    target = await resolve_target(message, bot, args[1] if len(args) > 1 else None)
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Promote</b>\n"
-            f"{LINE}\n\n"
-            f"Reply to user or: <code>/promote @user</code>",
+            "<b>Promote</b>\n\n"
+            "Reply to user or <code>/promote @user</code>",
             parse_mode="HTML",
         )
         return
@@ -163,42 +143,41 @@ async def cmd_promote(
             can_invite_users=True,
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Promoted</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  → Group Admin",
+            f"✅ <b>Promoted</b>\n\n"
+            f"{target.display_tag}\n"
+            f"→ Group Admin",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to promote: <code>{e}</code>", parse_mode="HTML")
+        log.exception("promote_failed")
+        await message.answer(
+            "⚠️ Couldn't promote this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /demote — demote from admin ━━━
+# ━━━ /demote ━━━
 
 @router.message(Command("demote"))
 async def cmd_demote(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Demote user from group admin."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MANAGE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split(maxsplit=1) if message.text else []
-    args_text = args[1] if len(args) > 1 else None
-    target = await resolve_target(message, bot, args_text)
+    target = await resolve_target(message, bot, args[1] if len(args) > 1 else None)
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Demote</b>\n"
-            f"{LINE}\n\n"
-            f"Reply to user or: <code>/demote @user</code>",
+            "<b>Demote</b>\n\n"
+            "Reply to user or <code>/demote @user</code>",
             parse_mode="HTML",
         )
         return
@@ -214,42 +193,40 @@ async def cmd_demote(
             can_invite_users=False,
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Demoted</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  → Member",
+            f"✅ <b>Demoted</b>\n\n"
+            f"{target.display_tag}\n"
+            f"→ Member",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to demote: <code>{e}</code>", parse_mode="HTML")
+        log.exception("demote_failed")
+        await message.answer(
+            "⚠️ Couldn't demote this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /ban — ban user ━━━
+# ━━━ /ban ━━━
 
 @router.message(Command("ban"))
 async def cmd_ban(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Ban user from group."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split(maxsplit=1) if message.text else []
-    args_text = args[1] if len(args) > 1 else None
-    target = await resolve_target(message, bot, args_text)
+    target = await resolve_target(message, bot, args[1] if len(args) > 1 else None)
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Ban</b>\n"
-            f"{LINE}\n\n"
-            f"Reply to user or: <code>/ban @user</code>",
+            "<b>Ban</b>\n\nReply to user or <code>/ban @user</code>",
             parse_mode="HTML",
         )
         return
@@ -260,42 +237,41 @@ async def cmd_ban(
             user_id=target.telegram_id,
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Banned</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  ✕ Removed from group",
+            f"🚫 <b>Banned</b>\n\n"
+            f"{target.display_tag}\n"
+            f"Removed from group.",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to ban: <code>{e}</code>", parse_mode="HTML")
+        log.exception("ban_failed")
+        await message.answer(
+            "⚠️ Couldn't ban this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /unban — unban user ━━━
+# ━━━ /unban ━━━
 
 @router.message(Command("unban"))
 async def cmd_unban(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Unban user from group."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split(maxsplit=1) if message.text else []
-    args_text = args[1] if len(args) > 1 else None
-    target = await resolve_target(message, bot, args_text)
+    target = await resolve_target(message, bot, args[1] if len(args) > 1 else None)
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Unban</b>\n"
-            f"{LINE}\n\n"
-            f"<code>/unban @user</code> or <code>/unban 123456789</code>",
+            "<b>Unban</b>\n\n"
+            "<code>/unban @user</code> or <code>/unban 123456789</code>",
             parse_mode="HTML",
         )
         return
@@ -307,34 +283,35 @@ async def cmd_unban(
             only_if_banned=True,
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Unbanned</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  ◉ Can rejoin",
+            f"✅ <b>Unbanned</b>\n\n"
+            f"{target.display_tag}\n"
+            f"Can rejoin the group.",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to unban: <code>{e}</code>", parse_mode="HTML")
+        log.exception("unban_failed")
+        await message.answer(
+            "⚠️ Couldn't unban this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /mute — mute user ━━━
+# ━━━ /mute ━━━
 
 @router.message(Command("mute"))
 async def cmd_mute(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Mute user. Usage: /mute [reply|@user|ID] [30m|1h|2d]"""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split() if message.text else []
-    # /mute @user 1h  or  /mute 123 30m
     args_text = args[1] if len(args) > 1 else None
     duration_text = args[2] if len(args) > 2 else None
 
@@ -342,32 +319,20 @@ async def cmd_mute(
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Mute</b>\n"
-            f"{LINE}\n\n"
-            f"Reply + <code>/mute [30m|1h|2d]</code>\n"
-            f"or: <code>/mute @user 1h</code>\n\n"
-            f"<i>Default: 1 hour</i>",
+            "🔇 <b>Mute</b>\n\n"
+            "Reply + <code>/mute [30m|1h|2d]</code>\n"
+            "or <code>/mute @user 1h</code>\n\n"
+            "<i>Default: 1 hour</i>",
             parse_mode="HTML",
         )
         return
 
-    # If target was resolved from reply, duration could be in args[1]
     if message.reply_to_message and duration_text is None and args_text:
         duration_text = args_text
 
     duration = _parse_duration(duration_text)
     from datetime import datetime, timezone
     until = datetime.now(timezone.utc) + duration
-
-    # Format duration
-    total_mins = int(duration.total_seconds() / 60)
-    if total_mins >= 1440:
-        dur_str = f"{total_mins // 1440}d"
-    elif total_mins >= 60:
-        dur_str = f"{total_mins // 60}h"
-    else:
-        dur_str = f"{total_mins}m"
 
     try:
         await bot.restrict_chat_member(
@@ -381,42 +346,40 @@ async def cmd_mute(
             until_date=until,
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Muted</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  ◉ Duration: <b>{dur_str}</b>",
+            f"🔇 <b>Muted</b>\n\n"
+            f"{target.display_tag}\n"
+            f"Duration: {_fmt_duration(duration)}",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to mute: <code>{e}</code>", parse_mode="HTML")
+        log.exception("mute_failed")
+        await message.answer(
+            "⚠️ Couldn't mute this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /unmute — unmute user ━━━
+# ━━━ /unmute ━━━
 
 @router.message(Command("unmute"))
 async def cmd_unmute(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Unmute user."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split(maxsplit=1) if message.text else []
-    args_text = args[1] if len(args) > 1 else None
-    target = await resolve_target(message, bot, args_text)
+    target = await resolve_target(message, bot, args[1] if len(args) > 1 else None)
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Unmute</b>\n"
-            f"{LINE}\n\n"
-            f"Reply to user or: <code>/unmute @user</code>",
+            "<b>Unmute</b>\n\nReply to user or <code>/unmute @user</code>",
             parse_mode="HTML",
         )
         return
@@ -433,42 +396,39 @@ async def cmd_unmute(
             ),
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Unmuted</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  ◉ Can speak again",
+            f"🔊 <b>Unmuted</b>\n\n"
+            f"{target.display_tag}",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to unmute: <code>{e}</code>", parse_mode="HTML")
+        log.exception("unmute_failed")
+        await message.answer(
+            "⚠️ Couldn't unmute this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /kick — kick user (ban + unban) ━━━
+# ━━━ /kick ━━━
 
 @router.message(Command("kick"))
 async def cmd_kick(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Kick user from group (ban + immediate unban)."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
 
     if message.chat.type not in ("group", "supergroup"):
-        await message.answer("◈ This command works in groups only.")
+        await message.answer(_group_only_msg())
         return
 
     args = message.text.split(maxsplit=1) if message.text else []
-    args_text = args[1] if len(args) > 1 else None
-    target = await resolve_target(message, bot, args_text)
+    target = await resolve_target(message, bot, args[1] if len(args) > 1 else None)
 
     if target is None:
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Kick</b>\n"
-            f"{LINE}\n\n"
-            f"Reply to user or: <code>/kick @user</code>",
+            "<b>Kick</b>\n\nReply to user or <code>/kick @user</code>",
             parse_mode="HTML",
         )
         return
@@ -484,32 +444,32 @@ async def cmd_kick(
             only_if_banned=True,
         )
         await message.answer(
-            f"{LINE}\n"
-            f"◈ <b>Kicked</b>\n"
-            f"{LINE}\n\n"
-            f"▸ {target.display_tag}\n"
-            f"  ◉ Removed (can rejoin)",
+            f"👢 <b>Kicked</b>\n\n"
+            f"{target.display_tag}\n"
+            f"Removed. Can rejoin.",
             parse_mode="HTML",
         )
     except Exception as e:
-        await message.answer(f"◈ Failed to kick: <code>{e}</code>", parse_mode="HTML")
+        log.exception("kick_failed")
+        await message.answer(
+            "⚠️ Couldn't kick this user.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /pin — pin message ━━━
+# ━━━ /pin ━━━
 
 @router.message(Command("pin"))
 async def cmd_pin(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Pin replied message."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
 
     if not message.reply_to_message:
-        await message.answer(
-            "◈ Reply to a message to pin it."
-        )
+        await message.answer("Reply to a message to pin it.")
         return
 
     try:
@@ -517,18 +477,22 @@ async def cmd_pin(
             chat_id=message.chat.id,
             message_id=message.reply_to_message.message_id,
         )
-        await message.answer("◈ Message pinned.")
+        await message.answer("📌 Pinned.")
     except Exception as e:
-        await message.answer(f"◈ Failed to pin: <code>{e}</code>", parse_mode="HTML")
+        log.exception("pin_failed")
+        await message.answer(
+            "⚠️ Couldn't pin this message.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )
 
 
-# ━━━ /unpin — unpin message ━━━
+# ━━━ /unpin ━━━
 
 @router.message(Command("unpin"))
 async def cmd_unpin(
     message: Message, platform_user: User, bot: Bot
 ) -> None:
-    """Unpin replied message or latest pinned."""
     auth_service.require_permission(
         platform_user, PermissionKey.GROUP_MODERATE
     )
@@ -541,6 +505,11 @@ async def cmd_unpin(
             )
         else:
             await bot.unpin_chat_message(chat_id=message.chat.id)
-        await message.answer("◈ Message unpinned.")
+        await message.answer("📌 Unpinned.")
     except Exception as e:
-        await message.answer(f"◈ Failed to unpin: <code>{e}</code>", parse_mode="HTML")
+        log.exception("unpin_failed")
+        await message.answer(
+            "⚠️ Couldn't unpin.\n\n"
+            "<i>Check bot permissions and try again.</i>",
+            parse_mode="HTML",
+        )

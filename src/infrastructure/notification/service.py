@@ -1,8 +1,4 @@
-"""Notification service — send messages to IDOL TEAM group topics.
-
-Centralized routing for all bot-to-group notifications.
-All notifications go through here, never directly via bot.send_message.
-"""
+"""Notification service — send messages to IDOL TEAM group topics."""
 
 from __future__ import annotations
 
@@ -26,10 +22,6 @@ class NotificationService:
         text: str,
         fallback_topic: str = "system",
     ) -> bool:
-        """Send a message to a specific forum topic.
-
-        Returns True if sent successfully, False if topic not configured.
-        """
         if not settings.has_team_group:
             log.debug("notification_skipped", reason="no_team_group")
             return False
@@ -58,30 +50,25 @@ class NotificationService:
             return False
 
     async def notify_system(self, text: str) -> bool:
-        """Send to #system topic."""
         return await self._send_to_topic(
             settings.topic_system_id, text, "system"
         )
 
     async def notify_orders(self, text: str) -> bool:
-        """Send to #orders topic."""
         return await self._send_to_topic(
             settings.topic_orders_id, text, "orders"
         )
 
     async def notify_staff(self, text: str) -> bool:
-        """Send to #staff topic."""
         return await self._send_to_topic(
             settings.topic_staff_id, text, "staff"
         )
 
     async def send_startup_notification(self) -> None:
-        """Announce bot startup to system topic."""
         text = (
-            "🟢 <b>IDOL Platform Online</b>\n\n"
-            f"Environment: <b>{settings.app_env}</b>\n"
+            "🟢 <b>IDOL Online</b>\n\n"
             f"Bot: @{settings.hq_bot_username}\n"
-            f"AI: {'Enabled' if settings.enable_ai else 'Disabled'}"
+            f"Env: {settings.app_env}"
         )
         sent = await self.notify_system(text)
         if sent:
